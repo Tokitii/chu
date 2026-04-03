@@ -428,7 +428,7 @@ const ChatInterface: React.FC = () => {
       e.target.value = '';
   };
 
-  return (
+return (
     <div className="relative w-full h-screen overflow-hidden bg-[#f4f1ea] font-serif">
       
       <div className="absolute inset-0 z-0 bg-[url('https://www.transparenttextures.com/patterns/washi.png')] opacity-40"></div>
@@ -443,4 +443,128 @@ const ChatInterface: React.FC = () => {
         <div className="w-full max-w-4xl mx-auto mb-0 md:mb-8 flex flex-col h-[75vh] md:h-[65vh]">
             
             {/* Header / Utility Buttons */}
-            <div className="
+            <div className="flex justify-end gap-2 p-2 bg-white/50 backdrop-blur-sm rounded-t-xl border-b border-[#d7ccc8]">
+                <button onClick={handleDownloadHistory} className="text-xs px-3 py-1 bg-[#8d6e63] text-white rounded hover:bg-[#795548] transition-colors">
+                    履歴保存
+                </button>
+                <button onClick={() => historyFileInputRef.current?.click()} className="text-xs px-3 py-1 bg-[#a1887f] text-white rounded hover:bg-[#8d6e63] transition-colors">
+                    復元
+                </button>
+                <button onClick={() => memoryFileInputRef.current?.click()} className="text-xs px-3 py-1 bg-[#d7ccc8] text-[#3e2723] rounded hover:bg-[#bcaaa4] transition-colors">
+                    記憶追加
+                </button>
+                <input type="file" ref={historyFileInputRef} onChange={handleHistoryFileChange} accept=".txt" className="hidden" />
+                <input type="file" ref={memoryFileInputRef} onChange={handleMemoryFileChange} accept=".txt" className="hidden" />
+            </div>
+
+            {/* Error Banner */}
+            {error && (
+                <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-2 text-sm">
+                    {error}
+                </div>
+            )}
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white/40 backdrop-blur-sm border-x border-[#d7ccc8]">
+                {messages.map((msg) => (
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-2xl p-4 ${
+                            msg.role === 'user' 
+                            ? 'bg-[#8d6e63] text-white rounded-tr-sm' 
+                            : 'bg-white text-[#3e2723] rounded-tl-sm shadow-sm border border-[#d7ccc8]'
+                        }`}>
+                            {msg.image && (
+                                <img src={msg.image} alt="添付画像" className="max-w-full h-auto rounded-lg mb-2" />
+                            )}
+                            
+                            {editingMessageId === msg.id ? (
+                                <div className="flex flex-col gap-2">
+                                    <textarea
+                                        value={editText}
+                                        onChange={(e) => setEditText(e.target.value)}
+                                        className="w-full p-2 text-[#3e2723] bg-white rounded border border-[#d7ccc8] min-h-[60px]"
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={handleCancelEdit} className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">キャンセル</button>
+                                        <button onClick={() => handleSaveEdit(msg.id)} className="text-xs px-2 py-1 bg-[#795548] text-white rounded hover:bg-[#5d4037]">保存して再送信</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="whitespace-pre-wrap leading-relaxed">
+                                    {msg.text}
+                                    {msg.role === 'user' && !msg.isStreaming && (
+                                        <button onClick={() => handleStartEdit(msg)} className="ml-2 text-xs opacity-50 hover:opacity-100 underline">
+                                            [編集]
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+                
+                {isLoading && (
+                    <div className="flex justify-start">
+                        <div className="bg-white text-[#3e2723] rounded-2xl rounded-tl-sm p-4 shadow-sm border border-[#d7ccc8] flex space-x-2">
+                            <div className="w-2 h-2 bg-[#a1887f] rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-[#a1887f] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            <div className="w-2 h-2 bg-[#a1887f] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                        </div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="bg-[#f4f1ea] border border-[#d7ccc8] rounded-b-xl p-3 md:p-4 shadow-lg relative">
+                {selectedImage && (
+                    <div className="relative inline-block mb-3">
+                        <img src={selectedImage} alt="Preview" className="h-20 rounded border border-[#d7ccc8]" />
+                        <button onClick={clearImage} className="absolute -top-2 -right-2 bg-[#3e2723] text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-800">
+                            ×
+                        </button>
+                    </div>
+                )}
+                <div className="flex items-end gap-2">
+                    <button 
+                        onClick={() => fileInputRef.current?.click()} 
+                        className="p-2 text-[#8d6e63] hover:bg-[#efebe9] rounded-full transition-colors flex-shrink-0" 
+                        disabled={isLoading}
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </button>
+                    <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" />
+                    
+                    <textarea
+                        ref={textareaRef}
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                            }
+                        }}
+                        placeholder="伊織に話しかける..."
+                        className="flex-1 max-h-32 p-3 bg-white border border-[#d7ccc8] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#8d6e63] resize-none text-[#3e2723] placeholder-[#a1887f]"
+                        rows={1}
+                        disabled={isLoading}
+                    />
+                    
+                    <button 
+                        onClick={handleSendMessage}
+                        disabled={(!inputText.trim() && !selectedImage) || isLoading}
+                        className="p-3 bg-[#8d6e63] text-white rounded-xl hover:bg-[#795548] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ChatInterface;
