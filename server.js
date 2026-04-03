@@ -174,4 +174,5 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`サーバーがポート ${PORT} で起動しました。`));
+// 【重要】ここで '0.0.0.0' を指定することで、Cloud Runで正常に起動します！
+app.listen(PORT, '0.0.0.0', () => console.log(`伊織のサーバーがポート ${PORT} で起動しました。`));
