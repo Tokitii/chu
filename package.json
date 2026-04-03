@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node server.js",
     "build": "tsc -b && vite build",
+    "start": "node server.js",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google-cloud/vertexai": "^1.9.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
