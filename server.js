@@ -12,17 +12,16 @@ app.use(express.json({ limit: '50mb' }));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Google Cloud設定
-// ★ process.env から読み込めない場合に備えて、直接プロジェクトIDを指定します
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID || "gen-lang-client-0439150178";
+const PROJECT_ID = "gen-lang-client-0439150178"; // あなたのプロジェクトID
 const LOCATION = "asia-northeast1"; // 東京リージョン
 
 const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });
 
-// ★ Cloud Storage 設定
+// Cloud Storage 設定
 const storage = new Storage({ projectId: PROJECT_ID });
-
-// ★ バケット名も直接指定します。（※Google CloudのCloud Storageで作成したバケット名をここに入れてください）
-const BUCKET_NAME = process.env.GOOGLE_CLOUD_STORAGE_BUCKET || "iorimemory";
+// ↓他の人と被らない世界で一つの名前にする必要があります（今回はプロジェクトIDの数字を入れました）
+const BUCKET_NAME = "iori-chat-storage-0439150178"; 
+const STATE_FILE_NAME = 'iori_chat_state.json';
 
 // モデル設定
 const MAIN_MODEL_ID = "gemini-3.1-pro-preview";
