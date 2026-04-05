@@ -1,27 +1,32 @@
 import express from 'express';
 import cors from 'cors';
 import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { Storage } from '@google-cloud/storage'; // ★追加
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const app = express();
 app.use(cors());
-// 画像の送信に備えて上限を大きめに設定
-app.use(express.json({ limit: '50mb' })); 
+app.use(express.json({ limit: '50mb' }));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Google Cloud設定
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID;
 const LOCATION = "asia-northeast1"; // 東京リージョン
-
 const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+
+// ★ Cloud Storage 設定
+const storage = new Storage({ projectId: PROJECT_ID });
+// 環境変数からバケット名を取得する
+const BUCKET_NAME = process.env.GOOGLE_CLOUD_STORAGE_BUCKET;
+// 記憶を保存するGCS上のファイル名
+const STATE_FILE_NAME = 'iori_chat_state.json';
 
 // モデル設定
 const MAIN_MODEL_ID = "gemini-3.1-pro-preview";
 const SUMMARY_MODEL_ID = "gemini-3.1-flash-lite-preview";
 
-// 共通のセーフティ設定
 const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -29,7 +34,6 @@ const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// 履歴のフォーマット変換関数
 const formatHistory = (messages) => {
   let formatted = messages
     .filter(msg => msg.text && msg.text.trim() !== "")
@@ -37,8 +41,6 @@ const formatHistory = (messages) => {
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.text }]
     }));
-
-  // Vertex AIの仕様: 履歴は必ずuserから始まる必要があるため、先頭がmodelなら削る
   if (formatted.length > 0 && formatted[0].role !== 'user') {
     formatted.shift();
   }
@@ -46,22 +48,67 @@ const formatHistory = (messages) => {
 };
 
 // ==========================================
+// ★ API 0: GCS状態管理用エンドポイント
+// ==========================================
+app.get('/api/state', async (req, res) => {
+  try {
+    if (!BUCKET_NAME) throw new Error("環境変数 GOOGLE_CLOUD_STORAGE_BUCKET が設定されていません");
+    const file = storage.bucket(BUCKET_NAME).file(STATE_FILE_NAME);
+    const [exists] = await file.exists();
+    if (!exists) return res.json({ summary: "", index: 0 });
+    
+    const [contents] = await file.download();
+    res.json(JSON.parse(contents.toString()));
+  } catch (error) {
+    console.error("GCS読み込みエラー:", error);
+    res.status(500).json({ error: "Failed to load state" });
+  }
+});
+
+app.post('/api/state', async (req, res) => {
+  const { summary, index } = req.body;
+  try {
+    if (!BUCKET_NAME) throw new Error("環境変数 GOOGLE_CLOUD_STORAGE_BUCKET が設定されていません");
+    const file = storage.bucket(BUCKET_NAME).file(STATE_FILE_NAME);
+    await file.save(JSON.stringify({ summary, index }), {
+      contentType: 'application/json',
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("GCS保存エラー:", error);
+    res.status(500).json({ error: "Failed to save state" });
+  }
+});
+
+app.delete('/api/state', async (req, res) => {
+  try {
+    if (!BUCKET_NAME) throw new Error("環境変数 GOOGLE_CLOUD_STORAGE_BUCKET が設定されていません");
+    const file = storage.bucket(BUCKET_NAME).file(STATE_FILE_NAME);
+    const [exists] = await file.exists();
+    if (exists) await file.delete();
+    res.json({ success: true });
+  } catch (error) {
+    console.error("GCS削除エラー:", error);
+    res.status(500).json({ error: "Failed to delete state" });
+  }
+});
+
+// ==========================================
 // API 1: 要約エンドポイント (Flash Lite)
 // ==========================================
 app.post('/api/summarize', async (req, res) => {
   const { messages, previousSummary } = req.body;
-
   if (!messages || messages.length === 0) {
     return res.json({ summary: previousSummary });
   }
-
+  
   try {
     const summaryModel = vertexAI.getGenerativeModel({
       model: SUMMARY_MODEL_ID,
       safetySettings
     });
 
-    const conversationText = messages.map(m => 
+    const conversationText = messages.map(m =>
       `${m.role === 'user' ? '妻（ユーザー）' : '伊織'}: ${m.text}`
     ).join("\n");
 
@@ -74,10 +121,10 @@ app.post('/api/summarize', async (req, res) => {
       ・文学的な装飾やポエムは一切不要です。事実と状況の変化だけを「簡潔な箇条書き」で圧縮してください。
       
       【これまでのあらすじ】
-      ${previousSummary}
+      ${}
       
       【新しい会話ログ】
-      ${conversationText}
+      ${}
       
       【必須要素（すべて含めて370文字以内）】
       1. 現在の状況・雰囲気（甘い雰囲気など。※ただし、詳細な描写は省き簡潔にすること）
@@ -101,18 +148,16 @@ app.post('/api/summarize', async (req, res) => {
       3. 二人の間で交わされた「直後の予定」や「未回収のフラグ」
       4. 妻が伝えた重要な事実
       5. 伊織が妻に対して行った重要なアクションや約束
-
+      
       【会話ログ】
-      ${conversationText}
+      ${}
       `;
     }
 
     const result = await summaryModel.generateContent(prompt);
     const summaryText = result.response.text();
     console.log("★Flash Liteによる継ぎ足し要約完了");
-    
     res.json({ summary: summaryText });
-
   } catch (error) {
     console.error("要約生成エラー:", error);
     res.status(500).json({ error: "Failed to summarize history", summary: previousSummary });
@@ -124,7 +169,6 @@ app.post('/api/summarize', async (req, res) => {
 // ==========================================
 app.post('/api/chat', async (req, res) => {
   const { message, history, systemInstruction, imageData } = req.body;
-
   try {
     const mainModel = vertexAI.getGenerativeModel({
       model: MAIN_MODEL_ID,
@@ -133,12 +177,11 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const formattedHistory = formatHistory(history);
-    
-    const chat = mainModel.startChat({ 
+    const chat = mainModel.startChat({
       history: formattedHistory,
       generationConfig: { temperature: 1.5 }
     });
-    
+
     let promptParts = [{ text: message }];
     if (imageData) {
       const matches = imageData.match(/^data:(.+);base64,(.+)$/);
@@ -148,15 +191,12 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const result = await chat.sendMessageStream(promptParts);
-
-    // フロントエンドへストリーミングで少しずつ返す
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     for await (const chunk of result.stream) {
       const chunkText = chunk.text();
       if (chunkText) res.write(chunkText);
     }
     res.end();
-
   } catch (error) {
     console.error("チャット生成エラー:", error);
     res.status(500).send("伊織からの返信中にエラーが発生しました。");
@@ -164,15 +204,12 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ==========================================
-// 静的ファイルの提供 (ViteでビルドしたReactアプリ)
+// 静的ファイルの提供
 // ==========================================
 app.use(express.static(path.join(__dirname, 'dist')));
-
-// API以外のすべてのリクエストはReactのindex.htmlを返す（ルーティング用）
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 8080;
-// 【重要】ここで '0.0.0.0' を指定することで、Cloud Runで正常に起動します！
-app.listen(PORT, '0.0.0.0', () => console.log(`伊織のサーバーがポート ${PORT} で起動しました。`));
+app.listen(PORT, '0.0.0.0', () => console.log(`伊織のサーバーがポート ${} で起動しました。`));
