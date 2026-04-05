@@ -11,6 +11,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 8080"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.14.0",
     "@google-cloud/vertexai": "^1.9.2",
     "cors": "^2.8.5",
     "express": "^4.21.0",
