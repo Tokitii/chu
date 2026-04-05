@@ -1,24 +1,21 @@
-# 1. 安定板のNode.js環境を用意
-FROM node:20-slim
+# Node.jsの環境を用意
+FROM node:20-alpine
 
-# 2. 作業ディレクトリを /app に設定
+# 作業ディレクトリを作成
 WORKDIR /app
 
-# 3. 依存関係のファイル（package.jsonなど）を先にコピー
+# パッケージ情報をコピーしてインストール
 COPY package*.json ./
-
-# 4. パッケージをインストール
 RUN npm install
 
-# 5. アプリケーションの全ソースコードをコピー
+# ソースコード全体をコピー
 COPY . .
 
-# 6. Vite (React) のフロントエンドコードをビルド（distフォルダが作られます）
+# Reactアプリ（フロントエンド）をビルドして dist フォルダを作成
 RUN npm run build
 
-# 7. Cloud Runが使用するポートを指定
+# Cloud Runが使うポートを開放
 EXPOSE 8080
-ENV PORT=8080
 
-# 8. コンテナ起動時にサーバーを実行
-CMD ["npm", "run", "start"]
+# サーバー起動（server.jsを実行）
+CMD ["npm", "start"]
