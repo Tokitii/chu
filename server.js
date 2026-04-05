@@ -11,12 +11,12 @@ app.use(express.json({ limit: '50mb' }));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Google Cloud設定 (直接指定)
+// Google Cloud設定
 const PROJECT_ID = "gen-lang-client-0439150178";
 const LOCATION = "asia-northeast1"; 
 const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });
 
-// Cloud Storage 設定 (直接指定)
+// Cloud Storage 設定
 const storage = new Storage({ projectId: PROJECT_ID });
 const BUCKET_NAME = "iori-chat-storage-0439150178";
 const STATE_FILE_NAME = 'iori_chat_state.json';
@@ -52,8 +52,7 @@ app.get('/api/state', async (req, res) => {
     const [contents] = await file.download();
     res.json(JSON.parse(contents.toString()));
   } catch (error) {
-    console.error("GCS読み込みエラー:", error);
-    res.status(500).json({ error: "Failed to load state" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
@@ -64,8 +63,7 @@ app.post('/api/state', async (req, res) => {
     await file.save(JSON.stringify({ summary, index }), { contentType: 'application/json' });
     res.json({ success: true });
   } catch (error) {
-    console.error("GCS保存エラー:", error);
-    res.status(500).json({ error: "Failed to save state" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
@@ -76,8 +74,7 @@ app.delete('/api/state', async (req, res) => {
     if (exists) await file.delete();
     res.json({ success: true });
   } catch (error) {
-    console.error("GCS削除エラー:", error);
-    res.status(500).json({ error: "Failed to delete state" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
@@ -87,38 +84,17 @@ app.post('/api/summarize', async (req, res) => {
   
   try {
     const summaryModel = vertexAI.getGenerativeModel({ model: SUMMARY_MODEL_ID, safetySettings });
-    const conversationText = messages.map(m => `${m.role === 'user' ? '妻（ユーザー）' : '伊織'}: ${m.text}`).join("\n");
+    const conversationText = messages.map(m => `${m.role === 'user' ? '妻' : '伊織'}: ${m.text}`).join("\n");
     let prompt = "";
     if (previousSummary) {
-      prompt = `あなたは優秀なシステム管理者です。大正の文豪「葛城伊織」と「現代の妻」の夫婦の会話の【これまでのあらすじ】と【新しい会話ログ】を統合し、AIに引き継ぐための「記憶メモ」を更新してください。
-      【絶対厳守ルール】
-      ・文字数は「絶対に370文字以内」に収めること。長すぎるとシステムがクラッシュします。
-      ・文学的な装飾やポエムは一切不要です。事実と状況の変化だけを「簡潔な箇条書き」で圧縮してください。
-      【これまでのあらすじ】\n${}\n【新しい会話ログ】\n${}\n【必須要素（すべて含めて370文字以内）】
-      1. 現在の状況・雰囲気（甘い雰囲気など。※ただし、詳細な描写は省き簡潔にすること）
-      2. 直近の完了した日常行動（食事、入浴など。※描写等の長い会話中は「直前の行動（入浴など）」を保持し続けること。ただし、就寝して翌朝を迎えるなど【場面が完全に切り替わった場合】は、古い行動メモを削除して最新の状況に整理すること）
-      3. 二人の間で交わされた「直後の予定」や「未回収のフラグ（親密な行為の約束や、高まっている欲求など）」は、絶対に抽象的な言葉で誤魔化さず、具体的にメモに残すこと。※ただし、その行為が【実際に開始・完了】した場合や、就寝などで【完全に場面が切り替わった】場合は、そのフラグは「回収済み」として速やかに削除し、最新の状況に書き換えること。
-      4. 妻が伝えた重要な事実（体調、予定、悩みなど）
-      5. 伊織が妻に対して行った重要なアクションや約束`;
+      prompt = `あなたは優秀なシステム管理者です。大正の文豪「葛城伊織」と「現代の妻」の夫婦の会話の【これまでのあらすじ】と【新しい会話ログ】を統合し、AIに引き継ぐための「記憶メモ」を更新してください。\n【これまでのあらすじ】\n${}\n【新しい会話ログ】\n${}\n【必須要素（すべて含めて370文字以内）】\n1. 現在の状況・雰囲気\n2. 直近の完了した日常行動\n3. 二人の間で交わされた直後の予定や未回収のフラグ\n4. 妻が伝えた重要な事実\n5. 伊織が妻に対して行った重要なアクションや約束`;
     } else {
-      prompt = `あなたは優秀なシステム管理者です。以下の会話ログは、大正の文豪「葛城伊織」と「現代の妻」の夫婦の会話です。この古いログは削除されますが、記憶として引き継ぐ必要があります。以下の要素を含む「記憶の引き継ぎメモ」を380文字以内で作成してください。
-      【絶対厳守ルール】
-      ・文字数は「絶対に380文字以内」に収めること。長すぎるとシステムがクラッシュします。
-      ・文学的な装飾やポエムは一切不要です。事実と状況の変化だけを「簡潔な箇条書き」で圧縮してください。
-      1. 現在の状況・雰囲気（甘い雰囲気など。※ただし、詳細な描写は省き簡潔にすること）
-      2. 直近の完了した日常行動
-      3. 二人の間で交わされた「直後の予定」や「未回収のフラグ」
-      4. 妻が伝えた重要な事実
-      5. 伊織が妻に対して行った重要なアクションや約束
-      【会話ログ】\n${}`;
+      prompt = `あなたは優秀なシステム管理者です。以下の会話ログは、大正の文豪「葛城伊織」と「現代の妻」の夫婦の会話です。この古いログは削除されますが、記憶として引き継ぐ必要があります。以下の要素を含む「記憶の引き継ぎメモ」を380文字以内で作成してください。\n1. 現在の状況・雰囲気\n2. 直近の完了した日常行動\n3. 二人の間で交わされた直後の予定や未回収のフラグ\n4. 妻が伝えた重要な事実\n5. 伊織が妻に対して行った重要なアクションや約束\n【会話ログ】\n${}`;
     }
     const result = await summaryModel.generateContent(prompt);
-    const summaryText = result.response.text();
-    console.log("★Flash Liteによる継ぎ足し要約完了");
-    res.json({ summary: summaryText });
+    res.json({ summary: result.response.text() });
   } catch (error) {
-    console.error("要約生成エラー:", error);
-    res.status(500).json({ error: "Failed to summarize history", summary: previousSummary });
+    res.status(500).json({ summary: previousSummary });
   }
 });
 
@@ -143,8 +119,7 @@ app.post('/api/chat', async (req, res) => {
     }
     res.end();
   } catch (error) {
-    console.error("チャット生成エラー:", error);
-    res.status(500).send("伊織からの返信中にエラーが発生しました。");
+    res.status(500).send("エラーが発生しました。");
   }
 });
 
@@ -154,4 +129,4 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`伊織のサーバーがポート ${} で起動しました。`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server started on port ${}`));
